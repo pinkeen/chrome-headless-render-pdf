@@ -5,7 +5,9 @@ chrome-headless-render-pdf [OPTIONS] --url=URL --pdf=OUTPUT-FILE [--url=URL2 --p
   Options:
     --help                   this screen
     --url                    url to load, for local files use: file:///path/to/file
-    --pdf                    output for generated file can be relative to current directory
+    --out                    output for generated file can be relative to current directory
+    --pdf                    alias to --out for backwards compatibility
+    --format                 output file format, one of: pdf, jpeg, png (default: pdf)
     --chrome-binary          set chrome location (use this options when autodetection fail)
     --chrome-option          set chrome option, can be used multiple times, e.g. --chrome-option=--no-sandbox
     --remote-host            set chrome host (for remote process)
@@ -21,11 +23,13 @@ chrome-headless-render-pdf [OPTIONS] --url=URL --pdf=OUTPUT-FILE [--url=URL2 --p
 
   Example:
     Render single pdf file
-      chrome-headless-render-pdf --url http://google.com --pdf test.pdf
+      chrome-headless-render-pdf --url http://google.com --out test.pdf
     Render pdf from local file
-      chrome-headless-render-pdf --url file:///tmp/example.html --pdf test.pdf
+      chrome-headless-render-pdf --url file:///tmp/example.html --out test.pdf
     Render multiple pdf files
       chrome-headless-render-pdf --url http://google.com --pdf test.pdf --url file:///tmp/example.html --pdf test2.pdf
+    Render screenshot
+      chrome-headless-render-pdf --url http://google.com --out test.png --format png
 ```
 
 # This tool can be also used programmatically:
@@ -36,7 +40,7 @@ RenderPDF.generateSinglePdf('http://google.com', 'outputPdf.pdf');
 
 ```
 const RenderPDF = require('chrome-headless-render-pdf');
-RenderPDF.generateMultiplePdf([
+RenderPDF.generateMultiple([
     {'http://google.com', 'outputPdf.pdf'},
     {'http://example.com', 'outputPdf2.pdf'}
 ]);
@@ -44,7 +48,7 @@ RenderPDF.generateMultiplePdf([
 
 ```
 const RenderPDF = require('chrome-headless-render-pdf');
-RenderPDF.generatePdfBuffer('http://google.com')
+RenderPDF.generateBuffer('http://google.com')
     .then((pdfBuffer) => {
       console.log(pdfBuffer);
     });

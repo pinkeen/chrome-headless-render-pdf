@@ -3,6 +3,7 @@ const fs = require('fs');
 const cp = require('child_process');
 const net = require('net');
 const commandExists = require('command-exists');
+const _ = require('lodash');
 
 class StreamReader {
     constructor(stream) {
@@ -57,6 +58,7 @@ class RenderPDF {
             includeBackground: def('includeBackground', undefined),
             pageRanges: def('pageRanges', undefined),
             scale: def('scale', undefined),
+            format: def('format', 'pdf')
         };
 
         this.commandLineOptions = {
@@ -68,11 +70,11 @@ class RenderPDF {
         }
     }
 
-    static async generateSinglePdf(url, filename, options) {
+    static async generateSingle(url, filename, options) {
         const renderer = new RenderPDF(options);
         await renderer.connectToChrome();
         try {
-            const buff = await renderer.renderPdf(url, renderer.generatePdfOptions());
+            const buff = await renderer.render(url, renderer.generateOptions());
             fs.writeFileSync(filename, buff);
             renderer.log(`Saved ${filename}`);
         } catch (e) {
@@ -81,7 +83,7 @@ class RenderPDF {
         renderer.killChrome();
     }
 
-    static async generatePdfBuffer(url, options) {
+    static async generateBuffer(url, options) {
         const renderer = new RenderPDF(options);
         await renderer.connectToChrome();
         try {
@@ -93,12 +95,12 @@ class RenderPDF {
         }
     }
 
-    static async generateMultiplePdf(pairs, options) {
+    static async generateMultiple(pairs, options) {
         const renderer = new RenderPDF(options);
         await renderer.connectToChrome();
         for (const job of pairs) {
             try {
-                const buff = await renderer.renderPdf(job.url, renderer.generatePdfOptions());
+                const buff = await renderer.render(job.url, renderer.generateOptions());
                 fs.writeFileSync(job.pdf, buff);
                 renderer.log(`Saved ${job.pdf}`);
             } catch (e) {
@@ -112,48 +114,56 @@ class RenderPDF {
         return new Promise((resolve, reject) => {
             CDP({host: this.host, port: this.port}, async (client) => {
                 try{
-                this.log(`Opening ${url}`);
-                const {Page, Emulation, LayerTree} = client;
-                await Page.enable();
-                await LayerTree.enable();
+                    this.log(`Opening ${url}`);
+                    const {Page, Emulation, LayerTree} = client;
+                    await Page.enable();
+                    await LayerTree.enable();
 
-                const loaded = this.cbToPromise(Page.loadEventFired);
-                const jsDone = this.cbToPromise(Emulation.virtualTimeBudgetExpired);
+                    const loaded = this.cbToPromise(Page.loadEventFired);
+                    const jsDone = this.cbToPromise(Emulation.virtualTimeBudgetExpired);
 
-                await Page.navigate({url});
-                await Emulation.setVirtualTimePolicy({policy: 'pauseIfNetworkFetchesPending', budget: 5000});
+                    await Page.navigate({url});
+                    await Emulation.setVirtualTimePolicy({policy: 'pauseIfNetworkFetchesPending', budget: 5000});
 
-                await this.profileScope('Wait for load', async () => {
-                    await loaded;
-                });
+                    await this.profileScope('Wait for load', async () => {
+                        await loaded;
+                    });
 
-                await this.profileScope('Wait for js execution', async () => {
-                    await jsDone;
-                });
+                    await this.profileScope('Wait for js execution', async () => {
+                        await jsDone;
+                    });
 
-                await this.profileScope('Wait for animations', async () => {
-                    await new Promise((resolve) => {
-                        setTimeout(resolve, 5000); // max waiting time
-                        let timeout = setTimeout(resolve, 100);
-                        LayerTree.layerPainted(() => {
-                            clearTimeout(timeout);
-                            timeout = setTimeout(resolve, 100);
+                    await this.profileScope('Wait for animations', async () => {
+                        await new Promise((resolve) => {
+                            setTimeout(resolve, 5000); // max waiting time
+                            let timeout = setTimeout(resolve, 100);
+                            LayerTree.layerPainted(() => {
+                                clearTimeout(timeout);
+                                timeout = setTimeout(resolve, 100);
+                            });
                         });
                     });
-                });
 
-                const pdf = await Page.printToPDF(options);
-                const buff = Buffer.from(pdf.data, 'base64');
-                client.close();
-                resolve(buff);
-                }catch (e) {
+                    let out;
+                    if (options.format === 'pdf') {
+                        out = await Page.printToPDF(options);
+                    } else {
+                        out = await Page.captureScreenshot(_.pick(options, ['format']));
+                    }
+
+                    const buff = Buffer.from(out.data, 'base64');
+
+                    client.close();
+                    resolve(buff);
+
+                } catch (e) {
                     reject(e.message)
                 }
             });
         });
     }
 
-    generatePdfOptions() {
+    generateOptions() {
         const options = {};
         if (this.options.landscape !== undefined) {
             options.landscape = !!this.options.landscape;
@@ -169,6 +179,8 @@ class RenderPDF {
         if (this.options.includeBackground !== undefined) {
             options.printBackground = !!this.options.includeBackground;
         }
+        
+        options.format = this.options.format;
 
         if(this.options.paperWidth !== undefined) {
             options.paperWidth = parseFloat(this.options.paperWidth);

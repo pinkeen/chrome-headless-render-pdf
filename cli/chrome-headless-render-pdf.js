@@ -15,6 +15,7 @@ const argv = require('minimist')(process.argv.slice(2), {
     string: [
         'url',
         'pdf',
+        'out',
         'chrome-binary',
         'chrome-option',
         'remote-host',
@@ -24,6 +25,7 @@ const argv = require('minimist')(process.argv.slice(2), {
         'paper-height',
         'page-ranges',
         'scale',
+        'format'
     ],
     boolean: [
         'no-margins',
@@ -32,13 +34,24 @@ const argv = require('minimist')(process.argv.slice(2), {
     ]
 });
 
-if (argv['help'] || !argv['pdf'] || !argv['url']) {
+if (argv['help'] || (!argv['pdf'] && !argv['out']) || !argv['url']) {
     printHelp();
     process.exit(2);
 }
 
+if (argv['pdf'] && argv['out']) {
+    console.error('ERROR: Specify either --pdf or --out \n');
+    printHelp();
+    process.exit(1);
+}
+
 const urls = typeof argv['url'] === 'string' ? [argv['url']] : argv['url'];
-const pdfs = typeof argv['pdf'] === 'string' ? [argv['pdf']] : argv['pdf'];
+const pdfs = typeof argv['out'] === 'string' ? [argv['out']] : argv['out'];
+let outs = typeof argv['out'] === 'string' ? [argv['out']] : argv['out'];
+
+if (!outs.length) {
+    outs = pdfs;
+}
 
 let windowSize;
 if (typeof argv['window-size'] === 'string') {
@@ -113,6 +126,16 @@ if(typeof argv['scale'] === 'string') {
     scale = Number(argv['scale']);
     if(isNaN(scale)) {
         console.error('--scale must be a number');
+    }
+}
+
+let format = 'pdf';
+if (argv['format']) {
+    format = argv['format'];
+
+    if (!['pdf', 'jpeg', 'png'].includes(format)) {
+        console.error(`--format: unknown value: ${format}`);
+        printHelp();
         process.exit(1);
     }
 }
@@ -120,7 +143,7 @@ if(typeof argv['scale'] === 'string') {
 (async () => {
     try {
         const jobs = generateJobList(urls, pdfs);
-        await RenderPDF.generateMultiplePdf(jobs, {
+        await RenderPDF.generateMultiple(jobs, {
             printLogs: true,
             landscape,
             noMargins,
@@ -133,7 +156,8 @@ if(typeof argv['scale'] === 'string') {
             paperWidth,
             paperHeight,
             pageRanges,
-            scale
+            scale,
+            format: format
         });
     } catch (e) {
         console.error(e);
@@ -159,7 +183,9 @@ function printHelp() {
     console.log('  Options:');
     console.log('    --help                   this screen');
     console.log('    --url                    url to load, for local files use: file:///path/to/file');
-    console.log('    --pdf                    output for generated file can be relative to current directory');
+    console.log('    --out                    output for generated file can be relative to current directory');
+    console.log('    --pdf                    alias to --out');
+    console.log('    --format                 output file format, one of: pdf, jpeg, png (default: pdf)');
     console.log('    --chrome-binary          set chrome location (use this options when autodetection fail)');
     console.log('    --chrome-option          set chrome option, can be used multiple times, e.g. --chrome-option=--no-sandbox');
     console.log('    --remote-host            set chrome host (for remote process)');
